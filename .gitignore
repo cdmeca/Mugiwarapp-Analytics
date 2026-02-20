@@ -1,0 +1,39 @@
+# --- Archivos del Sistema Operativo (Basura) ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Archivos de Configuración de Editores (VS Code, etc) ---
+.vscode/
+.idea/
+*.swp
+
+# --- Seguridad (¡MUY IMPORTANTE!) ---
+# Nunca subas contraseñas o conexiones reales a la BD
+config.ini
+.env
+secrets.json
+db_credentials.php
+
+# --- Archivos Temporales o de Log ---
+*.log
+*.tmp
+*.bak
+*.sql.gz
+
+# --- Python (Para el futuro) ---
+__pycache__/
+*.pyc
+.venv/
+env/
+venv/
+
+# --- Power BI ---
+# Los archivos temporales de Power BI
+*.lock
+
+# --- Archivos grandes o comprimidos ---
+*.zip
+*.rar
+# (Opcional: si tienes CSVs gigantes que no quieres subir)
+# data/*.csv
