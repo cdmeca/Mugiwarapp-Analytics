@@ -1,67 +1,128 @@
-# Mugiwarapp-Analytics
-# 🏴‍☠️ Mugiwarapp Analytics | One Piece TCG
+# Mugiwarapp Analytics | One Piece TCG
 
-**Una plataforma de análisis de datos e inteligencia competitiva para el juego de cartas One Piece TCG, enfocada en la predicción de tendencias mediante datos del metajuego asiático.**
+Base de datos relacional en **MySQL / MariaDB** para analizar el metajuego de *One Piece Card Game*: catálogo de cartas, mazos de usuario, resultados de torneos asiáticos y reglas del reglamento aplicadas en el propio motor.
 
----
+> Todos los datos de usuarios y jugadores de este repositorio son **ficticios o anonimizados**. Las cartas y el catálogo son datos públicos del juego.
 
-## Descripción del Proyecto
+## Contenido del repositorio
 
-**Mugiwarapp-Analytics** es una solución de datos diseñada para resolver una necesidad crítica en el ecosistema competitivo de *One Piece Card Game*: la brecha de información.
+| Archivo | Qué contiene |
+|---|---|
+| `01_schema_creation.sql` | Crea la base `mugiwarapp` (utf8mb4) y 20 tablas: catálogo, usuarios, mazos, metajuego e histórico. |
+| `02_seed_catalog.sql` | Catálogo de cartas (1.801 filas, incluida la carta marcadora `99999`), colores, tipos, rarezas, rotaciones, estados legales y torneos. |
+| `03_seed_sample_data.sql` | Datos de ejemplo anonimizados: 6 usuarios, 15 mazos, 218 mazos ganadores y 1.600 registros de victorias. |
+| `04_triggers.sql` | 10 triggers: reglas del reglamento (copias, 51 cartas, colores del líder) en INSERT y UPDATE, y auditoría de mazos. |
+| `05_views.sql` | 8 vistas: ranking de líderes y jugadores, mazos ganadores, colección por usuario y documentación de la propia base. |
+| `06_functions_procedures_events.sql` | 2 funciones (`impact_ratio`, `complete_collection_ratio`), 2 procedimientos (`deck_validator`, `backup_maintenance`) y 1 evento diario. |
+| `07_queries_examples.sql` | Consultas de ejemplo de solo lectura (ranking, mazos listos para imprimir, stock frente a mazo, rotación). |
+| `erd_diagram.png` | Diagrama entidad-relación. **Procede de una versión anterior** del esquema y puede no coincidir con los nombres y tipos actuales. |
 
-Dado que el metajuego asiático va **3 meses por delante** del lanzamiento global, los jugadores occidentales necesitan analizar esos datos para anticipar qué mazos y cartas dominarán los torneos futuros. Este proyecto ingesta, normaliza y analiza datos de torneos para ofrecer estadísticas que facilitan la toma de decisiones estratégicas y la gestión de colecciones.
+## Requisitos
 
-## Tecnologías Utilizadas
+- MySQL 8.0+ o MariaDB 10.5+ (se han probado los scripts con MariaDB 10.11).
+- Un usuario con permisos para crear bases de datos, triggers, funciones, procedimientos y eventos.
 
-El núcleo del proyecto está construido sobre una base de datos relacional robusta con lógica de negocio integrada:
+## Instalación
 
-* **MySQL (8.0+)**: Motor de base de datos principal.
-* **Advanced SQL Scripting**:
-    * **Triggers Complejos**: Implementación de reglas oficiales del juego (validación de colores líder-mazo, límites de copias) directamente en el motor de base de datos.
-    * **Vistas Analíticas**: Tablas virtuales pre-calculadas para rankings y estadísticas de uso.
-    * **Stored Constraints**: Validaciones de integridad de datos a nivel de esquema.
-* **Data Modeling**: Modelo relacional normalizado (3NF) con más de 20 tablas interconectadas.
+Ejecuta los scripts **en este orden**. Usa un cliente que soporte `DELIMITER`, como `mysql` o `mariadb`:
 
-## Dataset y Estructura
+```bash
+mysql -u <usuario> -p < 01_schema_creation.sql
+mysql -u <usuario> -p < 02_seed_catalog.sql
+mysql -u <usuario> -p < 03_seed_sample_data.sql
+mysql -u <usuario> -p < 04_triggers.sql
+mysql -u <usuario> -p < 05_views.sql
+mysql -u <usuario> -p < 06_functions_procedures_events.sql
+mysql -u <usuario> -p < 07_queries_examples.sql      # opcional
+```
 
-El sistema gestiona un volumen considerable de datos históricos y transaccionales:
+Los datos se cargan **antes** de los triggers a propósito, para que la carga inicial no quede bloqueada por las reglas. Si cambias datos después, los triggers se aplican igualmente.
 
-* **Volumen de Datos**:
-    * Más de **1.400 cartas** únicas detalladas con atributos, rareza y efectos.
-    * Más de **1.200 registros** de victorias en torneos competitivos (Meta Asiático).
-    * Miles de relaciones entre mazos y cartas (`winner_deck_details`).
-* **Modelo de Datos**:
-    * Tablas dimensionales para atributos de cartas (`card_colour`, `card_type`, `card_rarity`).
-    * Tablas de hechos para resultados de torneos (`meta_winners`, `winner_decks`).
-    * Tablas transaccionales de usuario (`user_deck`, `user_stock`).
+**Limpieza diaria del histórico:** el evento `backup_maintenance_event` necesita el planificador activo:
 
-## Lógica de Negocio y Automatización (SQL)
+```sql
+SET GLOBAL event_scheduler = ON;
+```
 
-A diferencia de una base de datos pasiva, este proyecto actúa como un motor de reglas activo.
+**Reconstruir desde cero:** el esquema no borra nada. Si quieres empezar de nuevo, ejecuta antes `DROP DATABASE IF EXISTS mugiwarapp;` tú mismo.
 
-### 1. Validación de Reglas del Juego (Triggers)
-Se programaron *triggers* para impedir la creación de mazos ilegales según el reglamento oficial de Bandai:
-* `trg_check_card_color_match`: Verifica dinámicamente si el color de una carta añadida coincide con la identidad de color del Líder del mazo (e.g., impide añadir una carta Roja en un mazo puramente Azul).
-* `max4copies`: Impide insertar más de 4 copias de la misma carta, respetando las excepciones de cartas "Unlimited".
-* `user_deck_plus_51`: Controla el límite estricto de cartas permitidas por mazo.
+## Reglas de negocio (triggers)
 
-### 2. Analítica e Insights (Vistas)
-* **`top_leaders_view`**: Genera un ranking dinámico de los líderes con mejor desempeño basado en puntos de torneo ponderados.
-* **`top_players`**: Identifica a los jugadores más consistentes del circuito asiático.
-* **`leader_view`**: Agrega atributos complejos para facilitar el filtrado en el frontend o dashboards.
+| Regla | Dónde | Comportamiento |
+|---|---|---|
+| Máximo de copias | `max4copies`, `max4copies_upd` | Legal: 4 · Restricted: 1 · Banned: 0 · Unlimited/unknown: sin límite. |
+| Máximo 51 cartas | `user_deck_plus_51`, `user_deck_plus_51_upd` | El total del mazo no puede superar 51. |
+| Color del líder | `trg_check_card_color_match`, `_upd` | La carta debe compartir al menos un color con el líder. |
+| Auditoría | `before_user_deck_insert`, `user_deck_header_backup`, `deck_detail_backup`, `deck_detail_delete_backup` | Fecha de creación y copias del mazo antes de modificar o borrar. |
 
-## Instalación y Reproducción
+Las reglas se aplican en INSERT y en UPDATE. Las restricciones de copias y de color se evalúan con el estado legal y los colores de la carta, no con IDs fijos.
 
-1.  Clonar el repositorio.
-2.  Importar el archivo `mugiwarapp_structure.sql` en tu servidor MySQL para crear el esquema, las vistas y los triggers.
-3.  (Opcional) Ejecutar los scripts de carga de datos `mugiwarapp_data.sql` para poblar la base de datos con las cartas del bloque OP-01 a OP-08 y EB-01.
-4.  Ejecutar las consultas de prueba en `queries_examples.sql` para ver las métricas.
+## Funciones y procedimientos
 
-## Futuras Implementaciones
+- **`impact_ratio(carta)`**: porcentaje (0-100) de mazos ganadores que incluyen la carta.
+- **`complete_collection_ratio(usuario)`**: porcentaje (0-100) de playsets completos del catálogo. Cada carta necesita 1 copia si es Leader y 4 en el resto; el valor suma el mínimo entre lo poseído y lo necesario.
+- **`deck_validator(mazo)`**: devuelve una fila con tres comprobaciones: 51 cartas, cartas `Banned` y cartas de rotaciones caducadas. Lanza error si el mazo no existe.
+- **`backup_maintenance()`**: borra el histórico con más de 32 días.
 
-* **Conexión con Power BI**: Desarrollo de un Dashboard interactivo mediante conexión ODBC para visualizar el *Win Rate* por color y evolución del precio de las cartas (aprovechando mis habilidades en DAX y modelado de datos).
-* **Pipeline ETL con Python**: Automatizar la ingesta de nuevos resultados de torneos mediante *web scraping* de fuentes asiáticas.
-* **Machine Learning**: Modelo predictivo para estimar la probabilidad de victoria de un mazo basado en su composición.
+Ejemplo:
+
+```sql
+CALL deck_validator(6);
+SELECT impact_ratio(1361) AS presencia_pct;
+```
+
+## Vistas principales
+
+- **`top_leaders`**: top 10 de líderes por puntos de torneo (puntos del torneo por cada victoria).
+- **`top_players`**: top 25 de jugadores por puntos, sin equipos genéricos.
+- **`top_decks_view`**: hasta 5 mazos ganadores por cada uno de los 10 líderes principales.
+- **`collection_user_view`**: cartas poseídas frente a playset necesario por usuario.
+- **`leader_list`**, **`INFOTABLAS`**, **`REGISTROSTABLAS`**, **`estructurabbdd`**: catálogo de líderes y documentación de la base.
+
+## Seguridad
+
+- **No hay usuarios ni contraseñas en el repositorio.** Los roles y cuentas de MySQL se gestionan fuera del repo.
+- Las contraseñas de `user_table` deben guardarse como hash (bcrypt o argon2, generado por la aplicación). Los datos de ejemplo usan hashes SHA-256 de cadenas demo (`demo-only-<id>`): no son válidos en producción.
+- Los nombres de jugadores de torneo están sustituidos por pseudónimos (`Player 001`…).
+
+## Pruebas
+
+Para comprobar la instalación, ejecuta:
+
+```sql
+SELECT * FROM top_leaders LIMIT 5;
+CALL deck_validator(1);       -- debería devolver OK en las 51 cartas
+```
+
+Se han verificado estos casos en una base limpia:
+
+- El ranking de líderes coincide con la suma real de puntos de sus victorias.
+- `impact_ratio` y `complete_collection_ratio` devuelven valores entre 0 y 100.
+- `deck_validator` valida el mazo que recibe.
+- Un UPDATE que supera 4 copias, 51 cartas o los colores del líder se rechaza.
+- Una carta con dos colores basta con que comparta uno con el líder para poder añadirse.
+- Borrar un mazo funciona aunque tenga histórico, y el histórico se guarda con precisión de microsegundos.
+
+## Cambios respecto a la versión anterior
+
+- `impact_ratio` era una suma de cantidades dividida entre filas (los valores sumaban ~317%); ahora es el porcentaje de mazos que contienen la carta.
+- `top_leaders` multiplicaba el ID del torneo por sus puntos; ahora suma los puntos de cada victoria.
+- `complete_collection_ratio` estaba invertido (necesarias/poseídas); ahora mide playsets completos y queda acotado a 0-100.
+- `deck_validator` validaba un mazo arbitrario; ahora valida el mazo que recibe.
+- Los triggers de regla solo funcionaban en INSERT; ahora también en UPDATE.
+- La regla de color comparaba solo el primer color de la carta; ahora basta con que coincida uno.
+- La regla de copias aplica también Restricted (1 copia) y Banned (0).
+- Un histórico de mazo con FK a la tabla viva impedía borrar mazos durante 32 días; ahora es independiente.
+- La validación de email rechazaba `nombre.apellido@dominio.com`.
+- La base usa utf8mb4, necesaria para nombres con kanji y emojis.
+- Se ha eliminado la columna `full_type`, que daba NULL en casi todas las cartas.
+
+## Pendiente
+
+- Regenerar el diagrama entidad-relación con el esquema actual.
+- Revisar los 3 registros de mazos de ejemplo que contienen cartas `Banned` (los datos se cargaron antes de aplicar las reglas).
+- Valorar si `winner_name` debe ser una tabla de jugadores aparte.
+- Conectar Power BI por ODBC y automatizar la ingesta de torneos con Python.
 
 ---
 *Autor: Chaim D. Medina Castilla*

@@ -37,3 +37,10 @@ venv/
 *.rar
 # (Opcional: si tienes CSVs gigantes que no quieres subir)
 # data/*.csv
+# --- Datos y cuentas locales (nunca al repositorio) ---
+# Usuarios/roles de MySQL y volcados completos con datos reales
+local/
+*_roles*.sql
+*_users*.sql
+*_full_dump*.sql
+*ALLINONE*.sql
